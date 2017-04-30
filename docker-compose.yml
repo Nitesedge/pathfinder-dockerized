@@ -1,0 +1,64 @@
+version: '2'
+
+services:
+  proxy:
+    image: jwilder/nginx-proxy
+    ports:
+      - 80:80
+      - 443:443
+    restart: on-failure
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - /docker/pathfinder/certs:/etc/nginx/certs:ro
+      - /etc/nginx/vhost.d
+      - /usr/share/nginx/html
+      - ./proxy/websocket.conf:/etc/nginx/conf.d/websocket.conf:ro
+      - ./proxy/vhost.d:/etc/nginx/vhost.d
+
+  letsencrypt:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    restart: on-failure
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./certs:/etc/nginx/certs:rw
+    volumes_from: 
+      - proxy
+     
+  DatabaseData:
+    image: mysql:5.6
+    entrypoint: /bin/bash
+
+  mysql:
+    image: mysql:5.6
+    volumes_from:
+      - DatabaseData
+    restart: on-failure
+    environment:
+      - MYSQL_ROOT_PASSWORD=<SETME>
+
+  redis:
+    image: redis
+    container_name: redis
+    restart: on-failure
+
+  websocket:
+    build: ./docker-websocket/
+    restart: on-failure
+    environment:
+      - VIRTUAL_HOST=websocket
+
+  pathfinder:
+    build: ./docker-pathfinder/
+    restart: on-failure
+    links:
+      - mysql
+      - redis
+    environment:
+      - VIRTUAL_HOST=<SETME>
+      - LETSENCRYPT_HOST=<SETME>
+      - LETSENCRYPT_EMAIL=<SETME>
+    volumes:
+      - ./config/config.ini:/app/app/config.ini
+      - ./config/routes.ini:/app/app/routes.ini
+      - ./config/environment.ini:/app/app/environment.ini
+      - ./config/pathfinder.conf:/etc/nginx/conf.d/pathfinder.conf
